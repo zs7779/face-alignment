@@ -2,10 +2,10 @@ from __future__ import print_function
 import os
 import sys
 import time
+import cv2
 import torch
 import math
 import numpy as np
-import cv2
 
 
 def _gaussian(
@@ -101,6 +101,8 @@ def crop(image, center, scale, resolution=256.0):
            ] = image[oldY[0] - 1:oldY[1], oldX[0] - 1:oldX[1], :]
     newImg = cv2.resize(newImg, dsize=(int(resolution), int(resolution)),
                         interpolation=cv2.INTER_LINEAR)
+    #print('old size:',br[0]-ul[0],'x',br[1]-ul[1])
+    #print('new size:',newImg.shape[0],'x',newImg.shape[1])
     return newImg
 
 
@@ -232,3 +234,64 @@ def flip(tensor, is_label=False):
     if was_cuda:
         tensor = tensor.cuda()
     return tensor
+
+
+def rotate(tensor, deg=0):
+    was_cuda = False
+    if isinstance(tensor, torch.Tensor):
+        tensor = tensor.numpy()
+    elif isinstance(tensor, torch.cuda.FloatTensor):
+        tensor = tensor.cpu().numpy()
+        was_cuda = True
+
+    was_squeezed = False
+    if tensor.ndim == 4:
+        tensor = np.squeeze(tensor)
+        was_squeezed = True
+    
+    tensor = tensor.transpose(1,2,0)
+    rows,cols,channels = tensor.shape
+    M = cv2.getRotationMatrix2D((cols/2,rows/2),deg,1)
+    result = np.zeros([rows,cols,channels])
+    for c in range(channels):
+        result[:,:,c] = cv2.warpAffine(tensor[:,:,c],M,(cols,rows))
+    #tensor = cv2.warpAffine(tensor,M,(cols,rows))
+    tensor = result.transpose(2,0,1)
+
+    if was_squeezed:
+        tensor = np.expand_dims(tensor, axis=0)
+    tensor = torch.from_numpy(tensor).float()
+    if was_cuda:
+        tensor = tensor.cuda()
+    return tensor
+
+
+def mirror(tensor,is_label=False):
+    was_cuda = False
+    if isinstance(tensor, torch.Tensor):
+        tensor = tensor.numpy()
+    elif isinstance(tensor, torch.cuda.FloatTensor):
+        tensor = tensor.cpu().numpy()
+        was_cuda = True
+
+    was_squeezed = False
+    if tensor.ndim == 4:
+        tensor = np.squeeze(tensor)
+        was_squeezed = True
+    
+    tensor = tensor.transpose(1,2,0)
+    rows,cols,channels = tensor.shape
+    result = np.zeros([rows,cols,channels])
+    if is_label:
+        tensor = shuffle_lr(tensor)
+    for c in range(channels):
+        result[:,:,c] = cv2.flip(tensor[:,:,c], 1)
+    tensor = result.transpose(2,0,1)
+
+    if was_squeezed:
+        tensor = np.expand_dims(tensor, axis=0)
+    tensor = torch.from_numpy(tensor).float()
+    if was_cuda:
+        tensor = tensor.cuda()
+    return tensor
+
